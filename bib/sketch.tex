@@ -1,0 +1,83 @@
+\documentclass{article}
+\usepackage{geometry}
+\geometry{a4paper, top=3cm, left=3cm, right=3cm, bottom=3cm}
+\usepackage[utf8]{inputenc}
+\usepackage{mathtools} 
+\usepackage{float}
+\usepackage{amssymb}
+\usepackage{mathrsfs}
+\usepackage{qtree}[]
+\usepackage{titlesec}
+%\titleformat{\subsection}[runin]{}{}{}{}[]
+\usepackage{titlesec}
+\titlelabel{\thetitle.\quad}
+\usepackage{palatino}
+%%% CRUCIAL COMMANDS FOR ME $$$$
+\usepackage{natbib}
+\renewcommand{\bibsection}{}
+
+\title{\sc Stefano Polloni}
+\author{\bf \Big Referee Report}
+\date{10/15/2014}
+
+\begin{document}
+
+\large 
+
+\vspace{5mm}
+\begin{center}
+{ \bf ECON2410} \\
+{ \sc Stefano Polloni} \\
+{ \bf 2\textsuperscript{nd} Research Sketch} \\
+\end{center}
+
+\vspace{4mm}
+
+\begin{center}
+\noindent {\LARGE \it Firm Entry and Agglomeration in Small Markets}
+\end{center}
+
+\vspace{6mm}
+
+\noindent I wish to examine the effect of urban density on firm entry and competitiveness in small local markets. Increased efficiency from agglomeration is expected to interact with market size in determining the number of incumbent firms in a given market. The seminal framework of \cite{bresnahan1991entry} provides the proper building blocks to adress this topic. By estimating an ordered probit model that incorporates urban density as a determinant of profit, my primary goal is to assess the effect of urban density on the entry thresholds\footnote{Defined as zero-profit equilibrium levels of demand for a number $N$ of firms} of markets in various industries. More generally, this exercise may provide further evidence on (1) the presence and extent of agglomeration effects, (2) the channels through which such effects impact the cost structure of firms and (3) how different industries are differentially affected by such effects. 
+
+\vspace{2mm}
+
+The large and growing litterature on the productivity effects of agglomeration suggests that there is a high level of heterogeneity in the size and explicit mecanisms of such effects across markets, industries and geography. For this sketch, 	I propose an empirical strategy to study aglomeration in small and geographically concentrated markets. In a small city, the market size for industries such as food and beverage, retail stores or repair services is well approximated by the city's population\footnote{This is at least something commonly assumed in the entry litterature}. Furthermore, conditionnal on market size and some assumptions about competitive conduct, a higher number of entrants in a given market should reflect higher productivity at the firm-level. We can therefore ask wether markets (cities) with higher urban density have more entrants, conditional on size (population). \cite{bresnahan1991entry} provide an interesting structure for this question. The model they use is readily adaptable and may even provide insights on the channel through which agglomeration affects the productivity of firms. \cite{jacob2003rotten}
+
+
+\vspace{2mm}
+
+My empirical strategy builds very heavily on \cite{bresnahan1991entry}. A central assumption of their work is that total demand for a product can be written as $Q=d(Z,P)\cdot S$ , where $S$ is the size of the market (population) and $d(Z,P)$ is how much a ``representative agent'' demands of the good at given price $P$ and demographic variables $Z$. Given this assumption, I write profits for the market's $N$th entrant as:
+\begin{equation*}
+\Pi_N = S\cdot V_N(Z,W,d) - F_N(W,d) + \varepsilon
+\end{equation*}
+\noindent where $\varepsilon\,$ is a {\it market-specific} error term representing unobserved fixed costs, $F_N(W,d)$ is the $N$th entrant's observed fixed cost and $V_N(Z,W,d)$ is the {\it per-buyer per-firm} average variable profit taking $Z$, exogenous cost shifters $W$, and urban density $d$ as arguments. The measurement of $d$ is to be defined but can be thought of as a ratio of economic activity per unit area. I assume\footnote{Most probably a dreadfully strong assumption, but seems standard practice in the market entry litterature.} $\varepsilon \sim iid \,\, N(0,\sigma^2)$. Therefore, the probability of observing N firms in equilibrium for a given market is $Pr(\Pi_N \geq0$ and $\Pi_{N+1} < 0)$. For data $\{N_m,S_m,W_m,Z_m,d_m\}_{m=1}^M$ on a number $M$ of markets in the same industry (e.g. restaurants), a likelyhood function is easily defined. An example of structure one would like to put on functions $V_N(Z,W,d)$ and $F_N(W,d)$  is given below:
+\begin{align*}
+V_N &= \alpha_1 - \sum\limits_{n=2}^N \alpha_n + Z\beta + W\delta + \pi_1 d + \pi_2 d^2 \\ \\[-0.8em]
+F_N &= \gamma_1 - \sum\limits_{n=2}^N \gamma_n + Z\rho  + \lambda_1 d + \lambda_2 d^2
+\end{align*}
+\noindent Here, $\alpha_n$ and $\gamma_n$ are simply coefficients on dummy variables that equal one if the number of firms on the market is less than or equal to $n$. The $\pi_i$ and $\lambda_i$ coefficients model the effect of urban density through variable and fixed costs, respectively. Controlling for land rent in Z is important. Using data for differents industries will allow for interesting comparisons of the magnitudes of $\pi_i$ and $\lambda_i$.
+
+
+
+
+
+
+
+
+
+
+
+
+\subsection*{References}
+\bibliographystyle{abbrvnat}
+\setcitestyle{authoryear,open={((},close={))}}
+\bibliography{bib}
+
+
+
+
+
+
+\end{document}

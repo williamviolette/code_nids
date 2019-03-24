@@ -1,0 +1,15 @@
+Education Impacts: Continued			
+		(1)	(2)
+VARIABLES	LABELS	Failed Grade	Parents Pay Edu Costs
+			
+rdp_op	Parent Owns RDP	-0.0139	0.0158
+		(0.0190)	(0.0180)
+rdp_np	Other Family Owns RDP	0.0543	0.0116
+		(0.0358)	(0.0213)
+			
+Observations		7,173	24,686
+R-squared		0.002	0.099
+Number of pid		3,304	11,275
+Time Fixed Effects		YES	YES
+Individual Fixed Effects		YES	YES
+Maximum Age 11 to 15		YES	

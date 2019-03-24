@@ -1,0 +1,14 @@
+Demographics				
+		(1)	(2)	(3)
+VARIABLES	LABELS	Size	Number of Children	Houeshold Income
+				
+rdp_op	Parent Owns RDP	0.0449	-0.0303	-367.4
+		(0.142)	(0.0796)	(339.1)
+rdp_np	Other Family Owns RDP	-0.0135	0.0105	-421.2*
+		(0.127)	(0.0718)	(222.7)
+				
+Observations		22,983	24,686	22,323
+R-squared		0.005	0.010	0.056
+Number of pid		11,228	11,275	11,120
+Time Fixed Effects		YES	YES	YES
+Individual Fixed Effects		YES	YES	YES

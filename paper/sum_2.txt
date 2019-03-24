@@ -1,0 +1,10 @@
+Summary Statistics: Subsidized Housing (RDP)			
+		(1)	(2)
+VARIABLES	LABELS	mean	N
+			
+rdp1	RDP House (At Any Time During the Sample Period)	0.250	6,486
+rdp	RDP House (Gained Over the Sample Period)	0.0808	5,967
+rdp_op	Parents Own RDP House (Gained Over the Sample Period)	0.0374	5,967
+rdp_np	Other Family Member Owns RDP House (Gained Over the Sample Period)	0.0571	5,967
+			
+Note: Sample includes households with children respondents			

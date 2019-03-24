@@ -1,0 +1,25 @@
+Summary Statistics					
+		(1)	(2)	(3)	(4)
+		rdp 0		rdp 1	
+VARIABLES	LABELS	mean	N	mean	N
+					
+absent	Days Absent from School (last month)	0.943	12,859	0.947	732
+absent_d	Dummy for at least one Absence	0.289	10,864	0.271	702
+c_failed	Failed Grade	0.0574	12,569	0.0678	708
+p_pay	Parents Pay Edu Costs	0.869	76,355	0.902	3,687
+p_hoh	Parent HoH	0.380	23,597	0.486	1,089
+g_hoh	Grand Parent HoH	0.399	23,597	0.336	1,089
+m_f_res	Parent Co-Resident	0.144	76,355	0.0721	3,687
+a	Age	27.24	76,150	29.28	3,687
+edu	Education	6.995	71,316	7.224	3,667
+size	Size	5.974	68,701	5.621	3,536
+child_alt	Number of Children	2.320	76,355	2.115	3,687
+young	Child Under 5	0.529	76,355	0.472	3,687
+inc	Houeshold Income	4,890	65,705	4,032	3,482
+te	Household Expenditure	3,400	62,012	2,821	3,368
+rooms	Rooms	4.078	63,160	3.728	3,496
+piped	Piped Water	0.624	68,563	0.863	3,536
+elec	Electricity	0.754	67,854	0.893	3,536
+mktv	Market Value	29,272	25,187	35,704	1,890
+					
+Note: Education variables apply to children					

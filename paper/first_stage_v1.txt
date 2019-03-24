@@ -1,0 +1,14 @@
+Head of Household				
+		(1)	(2)	(3)
+VARIABLES	LABELS	Parent HoH	Grand Parent HoH	Parent Co-Resident
+				
+rdp_op	Parent Owns RDP	0.0711**	-0.0105	-0.101***
+		(0.0327)	(0.0247)	(0.0203)
+rdp_np	Other Family Owns RDP	0.00957	0.0277	0.0538**
+		(0.0184)	(0.0210)	(0.0221)
+				
+Observations		24,686	24,686	24,686
+R-squared		0.005	0.047	0.621
+Number of pid		11,275	11,275	11,275
+Time Fixed Effects		YES	YES	YES
+Individual Fixed Effects		YES	YES	YES

@@ -1,0 +1,16 @@
+Child Care Mechanism			
+		(1)	(2)
+VARIABLES	LABELS	Absent	Absent
+			
+rdp_op	Parent Owns RDP	0.339	-1.453*
+		(0.588)	(0.744)
+rdp_np	Other Family Owns RDP	0.890	-1.158
+		(0.607)	(0.862)
+			
+Observations		1,946	767
+R-squared		0.025	0.068
+Number of pid		1,566	603
+Young Child Present		YES	NO
+Time Fixed Effects		YES	YES
+Individual Fixed Effects		YES	YES
+Note: Absent is measured in days absent greater than one (Intensive Margin)			

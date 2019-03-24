@@ -1,0 +1,14 @@
+Education Impacts				
+		(1)	(2)	(3)
+VARIABLES	LABELS	Absent (Days/Month)	Absent (Days over 1)	Failed Grade
+				
+rdp_op	Parent Owns RDP	-0.298	-0.192	0.00790
+		(0.303)	(0.457)	(0.0199)
+rdp_np	Other Family Owns RDP	-0.0130	1.435*	-0.0173
+		(0.296)	(0.835)	(0.0205)
+				
+Observations		11,566	3,326	8,325
+R-squared		0.014	0.028	0.001
+Number of pid		6,538	2,751	3,897
+Time Fixed Effects		YES	YES	YES
+Individual Fixed Effects		YES	YES	YES
