@@ -1,5 +1,8 @@
 
-cd "/Users/willviolette/Desktop/pstc_work/nids"
+* cd "/Users/willviolette/Desktop/pstc_work/nids"
+
+
+cd "${rawdata}"
 
 use clean_v1.dta, clear
 
