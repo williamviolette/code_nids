@@ -5,8 +5,9 @@ clear all
 set mem 4g
 set maxvar 10000
 
-cd "/Users/willviolette/Desktop/pstc_work/nids"
+cd "${rawdata}"
 
+* do "clean/tables/clean_data.do"
 
 program define main
 	quietly sum_rdp_numbers
@@ -29,6 +30,648 @@ program define main
 	health_overall
 	*use clean/data_analysis/regs_nate_tables_3_6, clear
 end
+
+
+
+use clean/data_analysis/house_treat_regs_inc_exp, clear
+	
+	sort pid r
+	by pid: replace rdp=rdp[_n-1] if rdp==.
+
+	sort pid r
+	by pid: g hco = rdp[_n]-rdp[_n-1]
+	replace hco = 0 if rdp==.
+
+	drop if hco<0
+
+	g hco_s = hco==1 & move==0
+	g hco_m = hco==1 & move==1
+	g moved = hco==0 & move==1
+
+
+	g rdp_s = rdp==1 & move==0
+	g rdp_m = rdp==1 & move==1
+	g r_moved = rdp==0 & move==1
+
+
+	egen prov1=group(prov)
+	egen rp = group(r prov1)
+
+	g crowd = size/rooms
+	by pid: g crowd_ch = crowd[_n]-crowd[_n-1]
+
+
+
+
+	areg rooms r_moved  rdp_m  rdp_s i.r , a(pid) r cluster(pid)
+	areg rooms_ch moved  hco_m hco_s , absorb(rp) cluster(rp) r
+
+	areg size r_moved  rdp_m rdp_s  i.r , a(pid) r cluster(pid)
+	areg size_ch  moved  hco_m hco_s  , absorb(rp) cluster(rp) r
+	
+	areg crowd r_moved  rdp_m rdp_s  i.r , a(pid) r cluster(pid)
+	areg crowd_ch moved  hco_m hco_s if crowd_ch>-4 & crowd_ch<4  , absorb(rp) cluster(rp) r
+
+
+
+	areg child r_moved  rdp_m rdp_s  i.r , a(pid) r cluster(pid)
+	areg child_ch moved  hco_m hco_s  , absorb(rp) cluster(rp) r
+
+	areg adult_men r_moved  rdp_m rdp_s  i.r , a(pid) r cluster(pid)
+	areg adult_men_ch moved  hco_m hco_s  , absorb(rp) cluster(rp) r
+
+	areg adult_women r_moved  rdp_m rdp_s  i.r , a(pid) r cluster(pid)
+	areg adult_women_ch moved  hco_m hco_s  , absorb(rp) cluster(rp) r
+
+
+	areg wath r_moved  rdp_m rdp_s  i.r , a(pid) r cluster(pid)
+	areg wath_ch moved  hco_m hco_s  , absorb(rp) cluster(rp) r
+
+	
+
+* hist rooms if (hco_m==1 | moved==1) & rooms<=8, by(moved)
+
+cap prog drop int_gen
+prog define int_gen
+cap drop moved_`1'
+	g moved_`1' = moved*`1'
+cap drop hco_m_`1'
+	g hco_m_`1' = hco_m*`1'
+cap drop hco_s_`1'
+	g hco_s_`1' = hco_s*`1'
+	global int_`1' = " moved_`1' hco_m_`1' hco_s_`1' "
+end
+
+g small_house = rooms_lag<3 
+g big_house = rooms_lag>=6
+g med_house = small_house==0 & big_house==0
+
+int_gen small_house
+int_gen big_house
+int_gen med_house
+
+g large_l = size_lag>=7 & size_lag<12
+g small_l = size_lag<7
+
+int_gen large_l
+int_gen small_l
+
+
+
+	 
+
+	foreach var of varlist  non_food_ch food_imp_ch ue_ch e_ch {
+		areg `var' $int_large_l $int_small_l large_l  if size_lag<12, absorb(rp) cluster(rp) r
+	}
+
+
+
+	foreach var of varlist child_ch adult_men_ch adult_women_ch { 
+		areg `var' $int_large_l $int_small_l large_l  if size_lag<12, absorb(rp) cluster(rp) r	
+	}
+
+
+sort pid r
+
+	*foreach var of varlist  inc_l_ch inc_r_ch inc_ch sch_spending_ch health_exp_ch non_food_ch public_ch food_ch food_imp_ch services_ch water_exp_ch ele_exp_ch {
+	
+	foreach var of varlist  inc_l inc_r inc sch_spending health_exp non_food public food food_imp services water_exp ele_exp {
+		quietly reg `var' i.child i.adult_men i.adult_women 
+		cap drop temp_`var'
+		quietly predict temp_`var', residuals
+		cap drop  `var'_ch_temp
+		quietly by pid: g `var'_ch_temp = temp_`var'[_n]-temp_`var'[_n-1]
+		*quietly sum `var'_ch_temp
+		*quietly replace `var'_ch_temp = . if `var'_ch_temp<`=r(p1)'  | `var'_ch_temp>`=r(p99)'
+		areg `var'_ch_temp $int_large_l $int_small_l large_l  if size_lag<12, absorb(rp) cluster(rp) r	
+		drop temp_`var' 	`var'_ch_temp
+	}
+
+
+* walls_b_ch inc_l_ch inc_r_ch inc_ch sch_spending_ch health_exp_ch
+
+global lag_set " size_ch  wath_ch toih_ch    "
+
+global lag_set_t ""
+
+foreach v in $lag_set {
+	forvalues r=1/2 {
+		cap drop `v'_ll`r' 
+		by pid: g `v'_ll`r' = `v'[_n-`r']
+		global lag_set_t = " ${lag_set_t} `v'_ll`r'  "
+	}
+}
+
+
+areg hco size_lag $lag_set_t i.r  , absorb(rp) r
+
+areg hco $lag_set_t i.r  , absorb(rp) cluster(rp) r
+
+
+
+
+	foreach var of varlist wath_ch toih_ch walls_b_ch  {
+		areg `var' moved  hco_m hco_s  , absorb(rp) cluster(rp) r
+	}
+	
+
+	areg rooms_ch $int_large_l $int_small_l large_l small_l  if size_lag<12, absorb(rp) cluster(rp) r
+	areg size_ch  $int_large_l $int_small_l large_l small_l  if size_lag<12 , absorb(rp) cluster(rp) r
+
+
+	areg crowd_ch $int_large_l $int_small_l large_l small_l  if crowd_ch>-4 & crowd_ch<4 & size_lag<12 , absorb(rp) cluster(rp) r
+
+
+	foreach var of varlist wath_ch toih_ch walls_b_ch  {
+		areg `var' $int_large_l $int_small_l large_l  if size_lag<12, absorb(rp) cluster(rp) r
+	}
+	
+
+	*** !!! NOTHING HERE !!! ***
+
+	foreach v in zwfa zhfa zbmi {
+		areg `v'_ch `v'_lag a sex $int_large_l $int_small_l large_l  if a<=12 &  size_lag<12, absorb(rp) cluster(rp) r
+	}
+	
+
+
+	areg rooms_ch $int_small_house $int_med_house $int_big_house , absorb(rp) cluster(rp) r
+	areg size_ch   $int_small_house $int_med_house $int_big_house  , absorb(rp) cluster(rp) r
+	areg crowd_ch $int_small_house $int_med_house $int_big_house , absorb(rp) cluster(rp) r
+
+
+
+	areg rooms_ch  hco_m moved  hco_s  , absorb(rp) cluster(rp) r
+	areg size_ch   hco_m moved   hco_s  , absorb(rp) cluster(rp) r
+	areg crowd_ch  hco_m hco_s  , absorb(rp) cluster(rp) r
+
+
+
+	areg rooms_ch moved  hco_m hco_s , absorb(rp) cluster(rp) r
+	areg size_ch  moved  hco_m hco_s  , absorb(rp) cluster(rp) r
+	areg crowd_ch moved  hco_m hco_s  , absorb(rp) cluster(rp) r
+
+
+*	areg rooms_ch hco moved hco_moved if hhgeo2011==2, absorb(rp) r
+*	areg size_ch hco moved hco_moved  if hhgeo2011==2, absorb(rp) r
+
+
+
+
+
+
+
+/*
+
+
+
+	reg size_ch moved i.size_lag i.r i.prov1, robust cluster(cluster)
+
+	keep if size_lag<15
+
+	g rdp_ch = h_ch_orig ==1 & move==1
+
+	xi: reg size_ch i.h_ch_orig*i.size_lag i.r i.prov1, robust cluster(cluster)
+
+
+	xi: reg size_ch i.moved*i.size_lag i.r i.prov1, robust cluster(cluster)
+
+	xi: reg size_ch i.moved*i.size_lag i.rdp_ch*i.size_lag i.r i.prov1, robust cluster(cluster)
+
+
+	g zhfa_lag = zhfa[_n-1]
+	g zbmi_lag = zbmi[_n-1]
+
+	foreach var of varlist zwfa zhfa zbmi zwfh c_absent c_failed c_health c_ill {
+	g `var'_lag_2=`var'_lag*`var'_lag
+	quietly sum `var', detail
+	by pid: g `var'_p25=(`var'[_n-1]<=r(p25))
+	by pid: g `var'_p50=(`var'[_n-1]>r(p25) & `var'[_n-1]<=r(p50))
+	by pid: g `var'_p75=(`var'[_n-1]>r(p50) & `var'[_n-1]<=r(p75))	
+	}
+
+
+	xi: reg zhfa_ch  h_ch_orig  i.a sex  zhfa_p* zhfa_lag* size_lag i.move  i.r*i.prov1  , robust cluster(cluster)
+	xi: reg zbmi_ch  h_ch_orig i.a sex  zbmi_p*  zhfa_lag*  size_lag i.move  i.r*i.prov1   , robust cluster(cluster)
+
+
+
+
+	reg rooms_ch  i.r i.prov1, 
+	xi: reg size_ch h_ch_orig i.size_lag*i.move  i.r i.prov1  , robust cluster(cluster)
+	xi: reg zhfa_ch  h_ch_orig i.move i.r*i.prov1  , robust cluster(cluster)
+
+	g m_ch=(move>=1 & move<.)
+
+drop if size_lag>15
+
+	xi: reg size_ch i.size_lag*i.h_ch_orig i.size_lag*i.move  i.r*i.prov1  , robust cluster(cluster)
+
+
+
+	* sort pid r
+	* by pid: g hco_l = hco[_n-1]
+	* by pid: g hco_l2 = hco[_n-2]
+	* reg moved hco hco_l hco_l2 // nothing in the lags!!!
+
+
+
+
+
+
+program define first_stage
+
+
+
+
+	use clean/data_analysis/regs_nate_tables_3_6, clear
+	label_variables		
+	global a "10"
+	global s "12"
+	global im "3500"
+	global clust "5"
+
+
+
+	coefplot, vertical keep(H_*) ytitle("Household Size Change Interacted with RDP") xtitle("Baseline Household Size")
+
+
+	
+	* FIRST STAGE *
+	xi: reg size_ch H_* sl_* mm_* h_chS h_chML lo lo_large lo2 lo2_large  h_chS_large h_chML_large    i.r*i.prov  if im<=3500 & size_lag<$s  & hclust>=$clust, robust cluster(cluster)
+	coefplot, vertical keep(H_*) ytitle("Household Size Change Interacted with RDP") xtitle("Baseline Household Size")
+
+	graph export clean/tables/size_ch.pdf, as(pdf) replace
+
+	xi: reg crowd_ch H_* sl_* mm_* h_chS h_chML    i.r*i.prov  if im<=3500 & size_lag<$s  & hclust>=$clust, robust cluster(cluster)
+	coefplot, vertical keep(H_*) ytitle("People per Room Interacted with RDP") xtitle("Baseline Household Size")
+
+	graph export clean/tables/crowd_ch.pdf, as(pdf) replace
+	
+
+	xi: reg size_ch H_* sl_* mm_* h_chS h_chML lo lo_large lo2 lo2_large  h_chS_large h_chML_large    i.r*i.prov  if im<=3500 &  size_lag<10 & size_lag>2  & hclust>=$clust & a<10, robust cluster(cluster)
+	coefplot, vertical keep(H_*) ytitle("Household Size Change Interacted with RDP") xtitle("Baseline Household Size")
+	graph export clean/tables/size_ch_kids.pdf, as(pdf) replace
+
+	xi: reg crowd_ch H_* sl_* mm_* h_chS h_chML    i.r*i.prov  if im<=3500 & size_lag<10 & size_lag>2  & hclust>=$clust & a<10, robust cluster(cluster)
+	coefplot, vertical keep(H_*) ytitle("People per Room Interacted with RDP") xtitle("Baseline Household Size")
+	graph export clean/tables/crowd_ch_kids.pdf, as(pdf) replace
+	
+
+	xi: reg size_ch h_ch h_ch_large h_chS h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large    i.r*i.prov  if  hclust>=0 & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
+	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Full Sample)	
+	xi: reg size_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
+	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
+	xi: reg size_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=10 & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
+	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 10)
+	xi: reg crowd_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
+	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
+	xi: reg ad_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
+	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
+	xi: reg ct_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
+	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
+	**KIDS
+	xi: reg size_ch h_ch h_ch_large h_chS h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large    i.r*i.prov  if  hclust>=0 & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Full Sample)	
+	xi: reg size_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
+	xi: reg size_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=10 & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 10)
+	xi: reg crowd_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
+	xi: reg ad_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
+	xi: reg ct_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
+
+end
+
+
+program define reduced_form_small_big
+	* REDUCED FORM *
+	use clean/data_analysis/regs_nate_tables_3_6, clear
+	label_variables		
+	global a "10"
+	global s "10"
+	global im "3500"
+	global clust "5"
+	global controls "H_1 H_2 H_3 H_4 H_5 H_6 H_7 H_8 H_9 HH sl_1 sl_2 sl_3 sl_4 sl_5 sl_6 sl_7 sl_8 sl_9 hh_sl mm_1 mm_2 mm_3 mm_4 mm_5 mm_6 mm_7 mm_8 mm_9 hh_mm"
+	global graphs "H_1 H_2 H_3 H_4 H_5 H_6 H_7 H_8 H_9 HH"	
+	
+	g small_house=rooms_lag<=2
+	g h_ch_small_house=small_house*h_ch
+	g h_ch_small_house_large=h_ch_small_house*large
+
+	g big_house=rooms_lag>4
+	g h_ch_big_house=big_house*h_ch
+	g h_ch_big_house_large=h_ch_big_house*large
+	
+	lab var small_house "Small House t-1 (Rooms \leq 2)"
+	lab var h_ch_small_house "RDPxSmall House t-1"
+	lab var h_ch_small_house_large "RDPxLarge HH t-1 x Small House t-1"
+
+	lab var big_house "Big House t-1 (Rooms \geq 5)"
+	lab var h_ch_big_house "RDPxBig House t-1"
+	lab var h_ch_big_house_large "RDPxLarge HH t-1 x Big House t-1"
+		
+*	xi: reg zhfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large h_chS h_chS_large  lo lo_large h_chML_large  m_ch lo2 lo2_large m_ch_large large a sex  h_chML i.r*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
+*	xi: reg zwfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large large  a sex  h_chS h_chML  i.r*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
+
+*	xi: reg zhfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large  h_chS h_chS_large  lo lo_large h_chML_large  m_ch lo2 lo2_large m_ch_large a sex  h_chML i.rl1*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
+*	outreg2 using clean/tables/big_small, nonotes tex(frag) sortvar(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) keep(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) label replace  nocons  addtext(Large Controls, YES, Treated Area, Over 5) 	addnote("All regressions control for lagged quartiles in outcomes")	
+	
+*	xi: reg zwfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large  a sex  h_chS h_chML  i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
+*	outreg2 using clean/tables/big_small, nonotes tex(frag) sortvar(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) keep(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) label append  nocons  addtext(Large Controls, YES, Treated Area, Over 5) 	addnote("All regressions control for lagged quartiles in outcomes")	
+
+	xi: reg zhfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large h_chS h_chS_large  lo lo_large h_chML_large  m_ch lo2 lo2_large m_ch_large a sex  h_chML i.rl1*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/big_small, nonotes tex(frag) sortvar(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) keep(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) label replace  nocons  addtext(Time x Prov x Large FE, YES, Treated Area, Over 5) 	addnote("All regressions control for lagged quartiles in outcomes")	
+	
+	xi: reg zwfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large  a sex  h_chS h_chML  i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/big_small, nonotes tex(frag) sortvar(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) keep(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) label append  nocons  addtext(Time x Prov x Large FE, YES, Treated Area, Over 5) 	addnote("All regressions control for lagged quartiles in outcomes")	
+
+
+end		
+
+
+program define reduced_form
+	* REDUCED FORM *
+	use clean/data_analysis/regs_nate_tables_3_6, clear
+	label_variables		
+	global a "10"
+	global s "10"
+	global im "3500"
+	global clust "5"
+	global controls "H_1 H_2 H_3 H_4 H_5 H_6 H_7 H_8 H_9 HH sl_1 sl_2 sl_3 sl_4 sl_5 sl_6 sl_7 sl_8 sl_9 hh_sl mm_1 mm_2 mm_3 mm_4 mm_5 mm_6 mm_7 mm_8 mm_9 hh_mm"
+	global graphs "H_1 H_2 H_3 H_4 H_5 H_6 H_7 H_8 H_9 HH"	
+			* HEIGHT MEASUREMENTS *
+	xi: reg zhfa_ch $controls a sex  h_chS h_chML  h_chS_large h_chML_large   i.rl1*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5  & size_lag>2, robust cluster(cluster)	
+	coefplot, vertical keep ($graphs) ytitle("Height Change Interacted with RDP (z-score)") xtitle("Baseline Household Size")
+	graph export clean/tables/height_ch.pdf, as(pdf) replace
+			* WEIGHT MEASUREMENTS *
+	xi: reg zwfa_ch $controls a sex  h_chS h_chML  h_chS_large h_chML_large   i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
+	coefplot, vertical keep ($graphs) ytitle("Weight Change Interacted with RDP (z-score)") xtitle("Baseline Household Size")
+	graph export clean/tables/weight_ch.pdf, as(pdf) replace
+
+*  lo lo_large lo2 lo2_large
+
+*egen max_ml=max(h_chML), by(pid)
+*drop if max_ml==1
+	
+	sort pid r
+	by pid: g im_lag=im[_n-1]
+	
+
+	global clust "0"
+	xi: reg zhfa_ch h_ch h_ch_large  h_chS h_chS_large h_chML_large  m_ch  m_ch_large large a sex  h_chML zhfa_p*  i.r*i.prov if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
+	quietly sum zhfa, detail
+	scalar define mean1=r(mean)
+	quietly	test _b[h_ch]+_b[h_ch_large]=0
+	outreg2 using clean/tables/health, nonotes tex(frag) sortvar(h_ch h_ch_large h_chS h_chS_large large lo lo_large) keep(h_ch h_ch_large h_chS h_chS_large large lo lo_large) label replace  nocons  addtext(Time x Prov FE, YES, Time x Prov x Large FE, NO, Treated Area, Full Sample)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
+
+	scalar drop mean1
+	global clust "0"
+	xi: reg zhfa_ch h_ch h_ch_large  h_chS h_chS_large h_chML_large  m_ch  m_ch_large a sex  h_chML  i.rl1*i.prov zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
+	quietly sum zhfa, detail
+	scalar define mean1=r(mean)
+	quietly	test _b[h_ch]+_b[h_ch_large]=0
+	outreg2 using clean/tables/health, nonotes tex(frag) sortvar(h_ch h_ch_large h_chS h_chS_large large lo lo_large) keep(h_ch h_ch_large h_chS h_chS_large large lo lo_large) label append  nocons  addtext(Time x Prov FE, NO, Time x Prov x Large FE, YES, Treated Area, Full Sample)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
+
+	scalar drop mean1
+	global clust "5"
+	xi: reg zhfa_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch m_ch_large a sex h_chS h_chML i.rl1*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
+	quietly sum zhfa, detail
+	scalar define mean1=r(mean)
+	quietly	test _b[h_ch]+_b[h_ch_large]=0	
+	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large  h_chS h_chS_large lo lo_large ) label append nocons  addtext(Time x Prov FE, NO, Time x Prov x Large FE, YES, Treated Area, Over 5) addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
+
+	scalar drop mean1
+	global clust "0"
+	xi: reg zwfa_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch  m_ch_large large  a sex  h_chS h_chML  zwfa_p* i.r*i.prov if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
+	quietly sum zwfa, detail
+	scalar define mean1=r(mean)
+	quietly	test _b[h_ch]+_b[h_ch_large]=0	
+	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large lo lo_large) label append nocons   addtext(Time x Prov FE, YES, Time x Prov x Large FE, NO, Treated Area, Full Sample)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) )	addnote("All regressions control for lagged quartiles in outcomes")	
+
+	scalar drop mean1
+	global clust "0"
+	xi: reg zwfa_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch m_ch_large  a sex  h_chS h_chML  i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
+	quietly sum zwfa, detail
+	scalar define mean1=r(mean)
+	quietly	test _b[h_ch]+_b[h_ch_large]=0	
+	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large lo lo_large) label append nocons  addtext(Time x Prov FE, NO, Time x Prov x Large FE, YES, Treated Area, Full Sample)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
+
+	scalar drop mean1
+	global clust "5"
+	xi: reg zwfa_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch m_ch_large  a sex  h_chS h_chML  i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
+	quietly sum zwfa, detail
+	scalar define mean1=r(mean)
+	quietly	test _b[h_ch]+_b[h_ch_large]=0	
+	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large h_chS h_chS_large lo lo_large ) label append nocons  addtext(Time x Prov FE, NO, Time x Prov x Large FE, YES, Treated Area, Over 5)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
+
+
+
+	xi: reg c_health_ch h_ch h_ch_large  h_chS  h_chS_large large h_chML_large  m_ch  m_ch_large    h_chML    i.r*i.prov  a sex c_health_p* if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & size_lag>2, robust cluster(cluster)	
+	quietly sum c_health, detail
+	outreg2 using clean/tables/health1, nonotes tex(frag) keep(h_ch h_ch_large  h_chS_large h_chS  large ) sortvar(h_ch h_ch_large h_chS h_chS_large large) label replace nocons  addtext(Time x Prov FE, YES, Treated Area, Over 5)  addstat(Mean, r(mean)) 	addnote("All regressions control for lagged quartiles in outcomes")	
+*	xi: reg c_health_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large    h_chS h_chML    i.rl1*i.prov  a sex c_health_p* if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & size_lag>2, robust cluster(cluster)	
+*	quietly sum c_health, detail
+*	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large) label append nocons  addtext(Large Controls, YES, Treated Area, Over 5)  addstat(Mean, r(mean)) 	addnote("All regressions control for lagged quartiles in outcomes")	
+
+	xi: reg c_ill_ch h_ch h_ch_large h_chS h_chS_large large h_chML_large  m_ch  m_ch_large  a sex c_ill_p*    h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & size_lag>2, robust cluster(cluster)	
+	quietly sum c_ill, detail
+	outreg2 using clean/tables/health1, nonotes tex(frag) keep(h_ch h_ch_large h_chS  h_chS_large  large ) label append nocons  addtext(Time x Prov FE, YES, Treated Area, Over 5)  addstat(Mean, r(mean)) 	addnote("All regressions control for lagged quartiles in outcomes")	
+*	xi: reg c_ill_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large a sex c_ill_p*   h_chS h_chML    i.rl1*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & size_lag>2, robust cluster(cluster)	
+*	quietly sum c_ill, detail
+*	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large) label append nocons  addtext(Large Controls, YES, Treated Area, Over 5)  addstat(Mean, r(mean)) 	addnote("All regressions control for lagged quartiles in outcomes")	
+end		
+
+
+
+
+
+program define health_overall 
+
+	use clean/data_analysis/regs_nate_tables_3_6, clear
+	label_variables		
+	global a "10"
+	global ak "10"
+	global s "10"
+	global im "3500"
+	global clust "5"
+	
+	foreach v in wath toih  {
+	g h_ch__`v'_lag=h_ch*`v'_lag
+	g m_ch__`v'_lag=m_ch*`v'_lag
+	}
+	lab var h_ch__wath_lag "RDPxPiped t-1"
+	lab var h_ch__toih_lag "RDPxFlush t-1"
+
+	lab var wath_lag "Piped t-1"
+	lab var toih_lag "Flush t-1"
+	
+	
+	global clust "0"
+	xi: reg zhfa_ch h_ch m_ch lo lo_large a sex h_chS h_chML    i.r*i.prov zhfa_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2, robust cluster(cluster)		
+	quietly sum zhfa if hclust>=$clust & im<=3500 & a<$s & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2, detail
+	scalar define mean1=r(mean)
+	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Full Sample)	addstat(Mean, mean1)
+
+	global clust "5"
+	xi: reg zhfa_ch h_ch m_ch lo lo_large a sex h_chS h_chML    i.r*i.prov zhfa_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2, robust cluster(cluster)	
+	quietly sum zhfa if hclust>=$clust & im<=3500 & a<$s & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2 , detail
+	scalar define mean1=r(mean)
+	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over $clust)	addstat(Mean, mean1)
+
+	global clust "0"
+	xi: reg zwfa_ch  h_ch m_ch lo lo_large h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)		
+	quietly sum zwfa if hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2 , detail
+	scalar define mean1=r(mean)
+	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Full Sample)	 addstat(Mean, mean1)
+
+	global clust "5"
+	xi: reg zwfa_ch  h_ch m_ch lo lo_large h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)		
+	quietly sum zwfa if hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2 , detail
+	scalar define mean1=r(mean)
+	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over $clust) addstat(Mean, mean1)	
+
+	xi: reg c_ill_ch h_ch m_ch lo lo_large a sex h_chS h_chML    i.r*i.prov c_ill_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & size_lag>2, robust cluster(cluster)	
+	quietly sum c_ill if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & size_lag>2, detail
+	scalar define mean1=r(mean)
+	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over $clust)		addstat(Mean, mean1)
+
+	xi: reg c_health_ch h_ch m_ch lo lo_large a sex h_chS h_chML    i.r*i.prov c_health_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & size_lag>2, robust cluster(cluster)	
+	quietly sum c_health if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & size_lag>2, detail
+	scalar define mean1=r(mean)
+	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over $clust)		addstat(Mean, mean1)
+
+	xi: reg zhfa_ch h_ch__* m_ch__* wath_lag toih_lag h_ch a sex h_chS h_chML    i.r*i.prov zhfa_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s &  zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/health_overall_w_t, nonotes tex(frag) keep(h_ch__* h_ch wath_lag toih_lag ) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over $clust)	
+	xi: reg zwfa_ch  h_ch__* m_ch__* wath_lag toih_lag  h_ch h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66  & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/health_overall_w_t, nonotes tex(frag) sortvar(h_ch) keep(h_ch__* h_ch wath_lag toih_lag ) label append nocons  addtext(Treated Area, Over $clust)	
+	xi: reg c_ill_ch  h_ch__* m_ch__* wath_lag toih_lag  h_ch h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s  & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/health_overall_w_t, nonotes tex(frag) sortvar(h_ch) keep(h_ch__* h_ch wath_lag toih_lag ) label append nocons  addtext(Treated Area, Over $clust)	
+	xi: reg c_health_ch  h_ch__* m_ch__* wath_lag toih_lag  h_ch h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s  & size_lag>2, robust cluster(cluster)	
+	outreg2 using clean/tables/health_overall_w_t, nonotes tex(frag) sortvar(h_ch) keep(h_ch__* h_ch wath_lag toih_lag ) label append nocons  addtext(Treated Area, Over $clust)	
+end
+
+
+
+
+
+
+program define house_quality
+	
+	use clean/data_analysis/regs_nate_tables_3_6, clear
+	label_variables		
+	global a1 "1000"
+	global ak "10"
+	global s "12"
+	global im "3500"
+	global clust "5"
+	
+	la var rooms_ch "Rooms Ch"
+	la var toih_ch "Flush Ch"
+	la var wath_ch "Piped Ch"
+	la var walls_b_ch "Brick Ch"
+	replace mktv=. if mktv>60000
+	
+	sort pid r
+	by pid: g mktv_ch=mktv[_n]-mktv[_n-1]
+	by pid: g h_ch_t1=h_ch[_n+1]
+	la var mktv_ch "Mktv Ch"
+	lab var h_freqdomvio_ch "Domestic Vio Ch"
+	lab var h_freqvio_ch "Violence Ch"
+	lab var h_freqgang_ch "Gang Ch"
+	lab var h_freqmdr_ch "Murder Ch"
+	lab var h_freqdrug_ch "Drug Ch"
+	lab var n_trust_ch "Trust Ch"
+	lab var n_stay_ch "Stay Ch"
+		
+	egen prov1 = group(prov)
+
+	
+	foreach var of varlist wath_ch toih_ch walls_b_ch refuse_ch mktv_ch rooms_ch {
+	reg `var' h_ch h_ch_large h_chS h_chS_large  large h_chML  h_chML_large  m_ch  m_ch_large lo lo_large lo2 lo2_large  i.r i.prov1  , robust cluster(cluster)
+	}		
+
+
+	xi: reg wath_ch h_ch h_ch_large h_chS h_chS_large  large h_chML  h_chML_large  m_ch  m_ch_large lo lo_large lo2 lo2_large  i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large h_chS h_chS_large large ) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
+	xi: reg toih_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg walls_b_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large  h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg refuse_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg mktv_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg rooms_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	** KIDS
+	xi: reg wath_ch h_ch h_ch_large h_chS h_chS_large  large h_chML  h_chML_large  m_ch  m_ch_large lo lo_large lo2 lo2_large  i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large h_chS h_chS_large large ) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
+	xi: reg toih_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg walls_b_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large  h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg refuse_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg mktv_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg rooms_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+
+** WITHOUT INTERACTIONS
+	xi: reg h_freqdomvio_ch h_ch m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
+	xi: reg h_freqvio_ch h_ch m_ch lo lo_large  h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg h_freqdrug_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg n_trust_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg n_stay_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
+	
+	* KIDS
+	xi: reg h_freqdomvio_ch h_ch m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
+	xi: reg h_freqvio_ch h_ch m_ch lo lo_large  h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg h_freqdrug_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg n_trust_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg n_stay_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
+
+***** INCLUDES INTERACTIONS
+	xi: reg h_freqdomvio_ch h_ch h_ch_large h_chS  h_chS_large large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large h_chS  h_chS_large large) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
+	xi: reg h_freqvio_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg h_freqdrug_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg n_trust_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg n_stay_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	* KIDS
+	xi: reg h_freqdomvio_ch h_ch h_ch_large h_chS  h_chS_large large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large h_chS  h_chS_large large) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
+	xi: reg h_freqvio_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg h_freqdrug_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg n_trust_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+	xi: reg n_stay_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
+	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
+
+end
+
+
+
 
 
 program define left_out_descriptives
@@ -58,6 +701,7 @@ program define left_out_descriptives
 	est sto t1
 *	estpost ttest zhfa zwfa  c_ill c_health size child adult rooms wath toih mktv  walls_b own inc  ex food, by(RDP2)
 *	est sto t2
+
 	esttab t1 using clean/tables/ttest_left_out, wide label replace tex noobs
 
 end
@@ -364,371 +1008,6 @@ program define parallel_trends
 end
 
 
-
-program define house_quality
-	
-	use clean/data_analysis/regs_nate_tables_3_6, clear
-	label_variables		
-	global a1 "1000"
-	global ak "10"
-	global s "12"
-	global im "3500"
-	global clust "5"
-	
-	la var rooms_ch "Rooms Ch"
-	la var toih_ch "Flush Ch"
-	la var wath_ch "Piped Ch"
-	la var walls_b_ch "Brick Ch"
-	replace mktv=. if mktv>60000
-	
-	sort pid r
-	by pid: g mktv_ch=mktv[_n]-mktv[_n-1]
-	by pid: g h_ch_t1=h_ch[_n+1]
-	la var mktv_ch "Mktv Ch"
-	lab var h_freqdomvio_ch "Domestic Vio Ch"
-	lab var h_freqvio_ch "Violence Ch"
-	lab var h_freqgang_ch "Gang Ch"
-	lab var h_freqmdr_ch "Murder Ch"
-	lab var h_freqdrug_ch "Drug Ch"
-	lab var n_trust_ch "Trust Ch"
-	lab var n_stay_ch "Stay Ch"
-	
-	xi: reg wath_ch h_ch h_ch_large h_chS h_chS_large  large h_chML  h_chML_large  m_ch  m_ch_large lo lo_large lo2 lo2_large  i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large h_chS h_chS_large large ) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
-	xi: reg toih_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg walls_b_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large  h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg refuse_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg mktv_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg rooms_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	** KIDS
-	xi: reg wath_ch h_ch h_ch_large h_chS h_chS_large  large h_chML  h_chML_large  m_ch  m_ch_large lo lo_large lo2 lo2_large  i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large h_chS h_chS_large large ) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
-	xi: reg toih_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg walls_b_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large  h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg refuse_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg mktv_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg rooms_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/house_quality_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-
-** WITHOUT INTERACTIONS
-	xi: reg h_freqdomvio_ch h_ch m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
-	xi: reg h_freqvio_ch h_ch m_ch lo lo_large  h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg h_freqdrug_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg n_trust_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg n_stay_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
-	
-	* KIDS
-	xi: reg h_freqdomvio_ch h_ch m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
-	xi: reg h_freqvio_ch h_ch m_ch lo lo_large  h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg h_freqdrug_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg n_trust_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg n_stay_ch h_ch  m_ch lo lo_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_kids, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over 5)
-
-***** INCLUDES INTERACTIONS
-	xi: reg h_freqdomvio_ch h_ch h_ch_large h_chS  h_chS_large large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large h_chS  h_chS_large large) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
-	xi: reg h_freqvio_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg h_freqdrug_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg n_trust_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg n_stay_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$a1 & size_lag<$s, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	* KIDS
-	xi: reg h_freqdomvio_ch h_ch h_ch_large h_chS  h_chS_large large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large h_chS  h_chS_large large) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over 5)
-	xi: reg h_freqvio_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg h_freqdrug_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg n_trust_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-	xi: reg n_stay_ch h_ch h_ch_large  h_chS_large h_chML_large  large m_ch lo lo_large lo2 lo2_large m_ch_large h_chS h_chML    i.r*i.prov  if hclust>=$clust & im<=$im & a<$ak & size_lag<10 & size_lag>2, robust cluster(cluster)
-	outreg2 using clean/tables/n_quality_i_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)
-
-end
-
-
-program define health_overall 
-
-	use clean/data_analysis/regs_nate_tables_3_6, clear
-	label_variables		
-	global a "10"
-	global ak "10"
-	global s "10"
-	global im "3500"
-	global clust "5"
-	
-	foreach v in wath toih  {
-	g h_ch__`v'_lag=h_ch*`v'_lag
-	g m_ch__`v'_lag=m_ch*`v'_lag
-	}
-	lab var h_ch__wath_lag "RDPxPiped t-1"
-	lab var h_ch__toih_lag "RDPxFlush t-1"
-
-	lab var wath_lag "Piped t-1"
-	lab var toih_lag "Flush t-1"
-	
-	
-	global clust "0"
-	xi: reg zhfa_ch h_ch m_ch lo lo_large a sex h_chS h_chML    i.r*i.prov zhfa_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2, robust cluster(cluster)		
-	quietly sum zhfa if hclust>=$clust & im<=3500 & a<$s & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2, detail
-	scalar define mean1=r(mean)
-	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Full Sample)	addstat(Mean, mean1)
-
-	global clust "5"
-	xi: reg zhfa_ch h_ch m_ch lo lo_large a sex h_chS h_chML    i.r*i.prov zhfa_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2, robust cluster(cluster)	
-	quietly sum zhfa if hclust>=$clust & im<=3500 & a<$s & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2 , detail
-	scalar define mean1=r(mean)
-	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over $clust)	addstat(Mean, mean1)
-
-	global clust "0"
-	xi: reg zwfa_ch  h_ch m_ch lo lo_large h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)		
-	quietly sum zwfa if hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2 , detail
-	scalar define mean1=r(mean)
-	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Full Sample)	 addstat(Mean, mean1)
-
-	global clust "5"
-	xi: reg zwfa_ch  h_ch m_ch lo lo_large h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)		
-	quietly sum zwfa if hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2 , detail
-	scalar define mean1=r(mean)
-	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over $clust) addstat(Mean, mean1)	
-
-	xi: reg c_ill_ch h_ch m_ch lo lo_large a sex h_chS h_chML    i.r*i.prov c_ill_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & size_lag>2, robust cluster(cluster)	
-	quietly sum c_ill if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & size_lag>2, detail
-	scalar define mean1=r(mean)
-	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over $clust)		addstat(Mean, mean1)
-
-	xi: reg c_health_ch h_ch m_ch lo lo_large a sex h_chS h_chML    i.r*i.prov c_health_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & size_lag>2, robust cluster(cluster)	
-	quietly sum c_health if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s & size_lag>2, detail
-	scalar define mean1=r(mean)
-	outreg2 using clean/tables/health_overall, nonotes tex(frag) keep(h_ch h_chS) label append nocons  addtext(Treated Area, Over $clust)		addstat(Mean, mean1)
-
-	xi: reg zhfa_ch h_ch__* m_ch__* wath_lag toih_lag h_ch a sex h_chS h_chML    i.r*i.prov zhfa_p*  if  hclust>=$clust & im<=3500 & a<$s & size_lag<$s &  zhfa_ch<2 & zhfa_ch>-1.3 & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/health_overall_w_t, nonotes tex(frag) keep(h_ch__* h_ch wath_lag toih_lag ) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Over $clust)	
-	xi: reg zwfa_ch  h_ch__* m_ch__* wath_lag toih_lag  h_ch h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66  & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/health_overall_w_t, nonotes tex(frag) sortvar(h_ch) keep(h_ch__* h_ch wath_lag toih_lag ) label append nocons  addtext(Treated Area, Over $clust)	
-	xi: reg c_ill_ch  h_ch__* m_ch__* wath_lag toih_lag  h_ch h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s  & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/health_overall_w_t, nonotes tex(frag) sortvar(h_ch) keep(h_ch__* h_ch wath_lag toih_lag ) label append nocons  addtext(Treated Area, Over $clust)	
-	xi: reg c_health_ch  h_ch__* m_ch__* wath_lag toih_lag  h_ch h_chS h_chML    i.r*i.prov zwfa_p*  if  hclust>=$clust & im<=3500 & a<$a & size_lag<$s  & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/health_overall_w_t, nonotes tex(frag) sortvar(h_ch) keep(h_ch__* h_ch wath_lag toih_lag ) label append nocons  addtext(Treated Area, Over $clust)	
-end
-
-
-program define first_stage
-
-	use clean/data_analysis/regs_nate_tables_3_6, clear
-	label_variables		
-	global a "10"
-	global s "12"
-	global im "3500"
-	global clust "5"
-	
-	* FIRST STAGE *
-	xi: reg size_ch H_* sl_* mm_* h_chS h_chML lo lo_large lo2 lo2_large  h_chS_large h_chML_large    i.r*i.prov  if im<=3500 & size_lag<$s  & hclust>=$clust, robust cluster(cluster)
-	coefplot, vertical keep(H_*) ytitle("Household Size Change Interacted with RDP") xtitle("Baseline Household Size")
-	graph export clean/tables/size_ch.pdf, as(pdf) replace
-
-	xi: reg crowd_ch H_* sl_* mm_* h_chS h_chML    i.r*i.prov  if im<=3500 & size_lag<$s  & hclust>=$clust, robust cluster(cluster)
-	coefplot, vertical keep(H_*) ytitle("People per Room Interacted with RDP") xtitle("Baseline Household Size")
-	graph export clean/tables/crowd_ch.pdf, as(pdf) replace
-	
-
-	xi: reg size_ch H_* sl_* mm_* h_chS h_chML lo lo_large lo2 lo2_large  h_chS_large h_chML_large    i.r*i.prov  if im<=3500 &  size_lag<10 & size_lag>2  & hclust>=$clust & a<10, robust cluster(cluster)
-	coefplot, vertical keep(H_*) ytitle("Household Size Change Interacted with RDP") xtitle("Baseline Household Size")
-	graph export clean/tables/size_ch_kids.pdf, as(pdf) replace
-
-	xi: reg crowd_ch H_* sl_* mm_* h_chS h_chML    i.r*i.prov  if im<=3500 & size_lag<10 & size_lag>2  & hclust>=$clust & a<10, robust cluster(cluster)
-	coefplot, vertical keep(H_*) ytitle("People per Room Interacted with RDP") xtitle("Baseline Household Size")
-	graph export clean/tables/crowd_ch_kids.pdf, as(pdf) replace
-	
-
-	xi: reg size_ch h_ch h_ch_large h_chS h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large    i.r*i.prov  if  hclust>=0 & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
-	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Full Sample)	
-	xi: reg size_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
-	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
-	xi: reg size_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=10 & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
-	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 10)
-	xi: reg crowd_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
-	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
-	xi: reg ad_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
-	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
-	xi: reg ct_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<100 & size_lag<12, robust cluster(cluster)	
-	outreg2 using clean/tables/size, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
-	**KIDS
-	xi: reg size_ch h_ch h_ch_large h_chS h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large    i.r*i.prov  if  hclust>=0 & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label replace sortvar(h_ch h_ch_large h_chS h_chS_large large) nocons  addtext(Treated Area, Full Sample)	
-	xi: reg size_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
-	xi: reg size_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=10 & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 10)
-	xi: reg crowd_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
-	xi: reg ad_ch h_ch h_ch_large  h_chS_large h_chML_large   m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
-	xi: reg ct_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large large h_chS h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<10 & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/size_kids, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large) label append nocons  addtext(Treated Area, Over 5)	
-
-end
-
-
-program define reduced_form_small_big
-	* REDUCED FORM *
-	use clean/data_analysis/regs_nate_tables_3_6, clear
-	label_variables		
-	global a "10"
-	global s "10"
-	global im "3500"
-	global clust "5"
-	global controls "H_1 H_2 H_3 H_4 H_5 H_6 H_7 H_8 H_9 HH sl_1 sl_2 sl_3 sl_4 sl_5 sl_6 sl_7 sl_8 sl_9 hh_sl mm_1 mm_2 mm_3 mm_4 mm_5 mm_6 mm_7 mm_8 mm_9 hh_mm"
-	global graphs "H_1 H_2 H_3 H_4 H_5 H_6 H_7 H_8 H_9 HH"	
-	
-	g small_house=rooms_lag<=2
-	g h_ch_small_house=small_house*h_ch
-	g h_ch_small_house_large=h_ch_small_house*large
-
-	g big_house=rooms_lag>4
-	g h_ch_big_house=big_house*h_ch
-	g h_ch_big_house_large=h_ch_big_house*large
-	
-	lab var small_house "Small House t-1 (Rooms \leq 2)"
-	lab var h_ch_small_house "RDPxSmall House t-1"
-	lab var h_ch_small_house_large "RDPxLarge HH t-1 x Small House t-1"
-
-	lab var big_house "Big House t-1 (Rooms \geq 5)"
-	lab var h_ch_big_house "RDPxBig House t-1"
-	lab var h_ch_big_house_large "RDPxLarge HH t-1 x Big House t-1"
-		
-*	xi: reg zhfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large h_chS h_chS_large  lo lo_large h_chML_large  m_ch lo2 lo2_large m_ch_large large a sex  h_chML i.r*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
-*	xi: reg zwfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large large  a sex  h_chS h_chML  i.r*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
-
-*	xi: reg zhfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large  h_chS h_chS_large  lo lo_large h_chML_large  m_ch lo2 lo2_large m_ch_large a sex  h_chML i.rl1*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
-*	outreg2 using clean/tables/big_small, nonotes tex(frag) sortvar(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) keep(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) label replace  nocons  addtext(Large Controls, YES, Treated Area, Over 5) 	addnote("All regressions control for lagged quartiles in outcomes")	
-	
-*	xi: reg zwfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large  a sex  h_chS h_chML  i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
-*	outreg2 using clean/tables/big_small, nonotes tex(frag) sortvar(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) keep(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) label append  nocons  addtext(Large Controls, YES, Treated Area, Over 5) 	addnote("All regressions control for lagged quartiles in outcomes")	
-
-	xi: reg zhfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large h_chS h_chS_large  lo lo_large h_chML_large  m_ch lo2 lo2_large m_ch_large a sex  h_chML i.rl1*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/big_small, nonotes tex(frag) sortvar(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) keep(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) label replace  nocons  addtext(Time x Prov x Large FE, YES, Treated Area, Over 5) 	addnote("All regressions control for lagged quartiles in outcomes")	
-	
-	xi: reg zwfa_ch h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large  a sex  h_chS h_chML  i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
-	outreg2 using clean/tables/big_small, nonotes tex(frag) sortvar(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) keep(h_ch h_ch_large small_house h_ch_small_house h_ch_small_house_large big_house h_ch_big_house h_ch_big_house_large) label append  nocons  addtext(Time x Prov x Large FE, YES, Treated Area, Over 5) 	addnote("All regressions control for lagged quartiles in outcomes")	
-
-
-end		
-
-
-program define reduced_form
-	* REDUCED FORM *
-	use clean/data_analysis/regs_nate_tables_3_6, clear
-	label_variables		
-	global a "10"
-	global s "10"
-	global im "3500"
-	global clust "5"
-	global controls "H_1 H_2 H_3 H_4 H_5 H_6 H_7 H_8 H_9 HH sl_1 sl_2 sl_3 sl_4 sl_5 sl_6 sl_7 sl_8 sl_9 hh_sl mm_1 mm_2 mm_3 mm_4 mm_5 mm_6 mm_7 mm_8 mm_9 hh_mm"
-	global graphs "H_1 H_2 H_3 H_4 H_5 H_6 H_7 H_8 H_9 HH"	
-			* HEIGHT MEASUREMENTS *
-	xi: reg zhfa_ch $controls a sex  h_chS h_chML  h_chS_large h_chML_large   i.rl1*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5  & size_lag>2, robust cluster(cluster)	
-	coefplot, vertical keep ($graphs) ytitle("Height Change Interacted with RDP (z-score)") xtitle("Baseline Household Size")
-	graph export clean/tables/height_ch.pdf, as(pdf) replace
-			* WEIGHT MEASUREMENTS *
-	xi: reg zwfa_ch $controls a sex  h_chS h_chML  h_chS_large h_chML_large   i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
-	coefplot, vertical keep ($graphs) ytitle("Weight Change Interacted with RDP (z-score)") xtitle("Baseline Household Size")
-	graph export clean/tables/weight_ch.pdf, as(pdf) replace
-
-*  lo lo_large lo2 lo2_large
-
-*egen max_ml=max(h_chML), by(pid)
-*drop if max_ml==1
-	
-	sort pid r
-	by pid: g im_lag=im[_n-1]
-	
-
-	global clust "0"
-	xi: reg zhfa_ch h_ch h_ch_large  h_chS h_chS_large h_chML_large  m_ch  m_ch_large large a sex  h_chML zhfa_p*  i.r*i.prov if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
-	quietly sum zhfa, detail
-	scalar define mean1=r(mean)
-	quietly	test _b[h_ch]+_b[h_ch_large]=0
-	outreg2 using clean/tables/health, nonotes tex(frag) sortvar(h_ch h_ch_large h_chS h_chS_large large lo lo_large) keep(h_ch h_ch_large h_chS h_chS_large large lo lo_large) label replace  nocons  addtext(Time x Prov FE, YES, Time x Prov x Large FE, NO, Treated Area, Full Sample)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
-
-	scalar drop mean1
-	global clust "0"
-	xi: reg zhfa_ch h_ch h_ch_large  h_chS h_chS_large h_chML_large  m_ch  m_ch_large a sex  h_chML  i.rl1*i.prov zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
-	quietly sum zhfa, detail
-	scalar define mean1=r(mean)
-	quietly	test _b[h_ch]+_b[h_ch_large]=0
-	outreg2 using clean/tables/health, nonotes tex(frag) sortvar(h_ch h_ch_large h_chS h_chS_large large lo lo_large) keep(h_ch h_ch_large h_chS h_chS_large large lo lo_large) label append  nocons  addtext(Time x Prov FE, NO, Time x Prov x Large FE, YES, Treated Area, Full Sample)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
-
-	scalar drop mean1
-	global clust "5"
-	xi: reg zhfa_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch m_ch_large a sex h_chS h_chML i.rl1*i.prov  zhfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zhfa_ch<2 & zhfa_ch>-1.5 & size_lag>2, robust cluster(cluster)	
-	quietly sum zhfa, detail
-	scalar define mean1=r(mean)
-	quietly	test _b[h_ch]+_b[h_ch_large]=0	
-	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large  h_chS h_chS_large lo lo_large ) label append nocons  addtext(Time x Prov FE, NO, Time x Prov x Large FE, YES, Treated Area, Over 5) addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
-
-	scalar drop mean1
-	global clust "0"
-	xi: reg zwfa_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch  m_ch_large large  a sex  h_chS h_chML  zwfa_p* i.r*i.prov if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
-	quietly sum zwfa, detail
-	scalar define mean1=r(mean)
-	quietly	test _b[h_ch]+_b[h_ch_large]=0	
-	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large lo lo_large) label append nocons   addtext(Time x Prov FE, YES, Time x Prov x Large FE, NO, Treated Area, Full Sample)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) )	addnote("All regressions control for lagged quartiles in outcomes")	
-
-	scalar drop mean1
-	global clust "0"
-	xi: reg zwfa_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch m_ch_large  a sex  h_chS h_chML  i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
-	quietly sum zwfa, detail
-	scalar define mean1=r(mean)
-	quietly	test _b[h_ch]+_b[h_ch_large]=0	
-	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large large h_chS h_chS_large lo lo_large) label append nocons  addtext(Time x Prov FE, NO, Time x Prov x Large FE, YES, Treated Area, Full Sample)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
-
-	scalar drop mean1
-	global clust "5"
-	xi: reg zwfa_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch m_ch_large  a sex  h_chS h_chML  i.rl1*i.prov  zwfa_p*  if  hclust>=$clust & im<=$im & a<$a & size_lag<$s & zwfa_ch<2.5 & zwfa_ch>-2.66 & size_lag>2, robust cluster(cluster)	
-	quietly sum zwfa, detail
-	scalar define mean1=r(mean)
-	quietly	test _b[h_ch]+_b[h_ch_large]=0	
-	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large h_chS h_chS_large lo lo_large ) label append nocons  addtext(Time x Prov FE, NO, Time x Prov x Large FE, YES, Treated Area, Over 5)  addstat(Mean, mean1, F-Stat: RDP+RDPxLarge=0, r(F) ) 	addnote("All regressions control for lagged quartiles in outcomes")	
-
-
-
-	xi: reg c_health_ch h_ch h_ch_large  h_chS  h_chS_large large h_chML_large  m_ch  m_ch_large    h_chML    i.r*i.prov  a sex c_health_p* if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & size_lag>2, robust cluster(cluster)	
-	quietly sum c_health, detail
-	outreg2 using clean/tables/health1, nonotes tex(frag) keep(h_ch h_ch_large  h_chS_large h_chS  large ) sortvar(h_ch h_ch_large h_chS h_chS_large large) label replace nocons  addtext(Time x Prov FE, YES, Treated Area, Over 5)  addstat(Mean, r(mean)) 	addnote("All regressions control for lagged quartiles in outcomes")	
-*	xi: reg c_health_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large    h_chS h_chML    i.rl1*i.prov  a sex c_health_p* if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & size_lag>2, robust cluster(cluster)	
-*	quietly sum c_health, detail
-*	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large) label append nocons  addtext(Large Controls, YES, Treated Area, Over 5)  addstat(Mean, r(mean)) 	addnote("All regressions control for lagged quartiles in outcomes")	
-
-	xi: reg c_ill_ch h_ch h_ch_large h_chS h_chS_large large h_chML_large  m_ch  m_ch_large  a sex c_ill_p*    h_chML    i.r*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & size_lag>2, robust cluster(cluster)	
-	quietly sum c_ill, detail
-	outreg2 using clean/tables/health1, nonotes tex(frag) keep(h_ch h_ch_large h_chS  h_chS_large  large ) label append nocons  addtext(Time x Prov FE, YES, Treated Area, Over 5)  addstat(Mean, r(mean)) 	addnote("All regressions control for lagged quartiles in outcomes")	
-*	xi: reg c_ill_ch h_ch h_ch_large  h_chS_large h_chML_large  m_ch lo lo_large lo2 lo2_large m_ch_large a sex c_ill_p*   h_chS h_chML    i.rl1*i.prov  if  hclust>=$clust & im<=$im & a<10 & size_lag<$s & size_lag>2, robust cluster(cluster)	
-*	quietly sum c_ill, detail
-*	outreg2 using clean/tables/health, nonotes tex(frag) keep(h_ch h_ch_large) label append nocons  addtext(Large Controls, YES, Treated Area, Over 5)  addstat(Mean, r(mean)) 	addnote("All regressions control for lagged quartiles in outcomes")	
-end		
 
 
 program define income 
@@ -1358,10 +1637,9 @@ end
 
 
 
-do clean/tables/clean_data
 
 
-main
+*main
 	
 	
 	

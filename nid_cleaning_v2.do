@@ -1,5 +1,6 @@
 * clean the big file
 
+/*
 
 cd "${rawdata}"
 

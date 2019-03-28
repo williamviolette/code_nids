@@ -338,7 +338,7 @@
 
 
 
-
+cap prog drop label_variables
 program define label_variables
 
 	lab var avg_e_lag "Avg Emp t-1"
